@@ -1,41 +1,37 @@
 package main
 
 import (
-	"errors"
-	"os"
-	"strconv"
-	"strings"
+	"flag"
+	"fmt"
 )
 
 type Configuration struct {
-	PalWorldServerPort  int
-	PalWorldCommandPath string
-	PalWorldCommandArgs []string
-	RconPort            int
+	PalWorldServerPort int
+	PalServerCommand   []string
+	RconPort           int
+	AdminPassword      string
 }
 
-func NewConfiguration() (*Configuration, error) {
-	palWorldServerPort, err := strconv.Atoi(os.Getenv("ITZPAPALOTL_PALWORLD_SERVER_PORT"))
-	if err != nil {
-		palWorldServerPort = 8211
+func NewConfiguration(args []string) (*Configuration, error) {
+	fs := flag.NewFlagSet("itzpapalotl", flag.ExitOnError)
+	fs.Usage = func() {
+		o := fs.Output()
+		fmt.Fprintln(o, "Usage: itzpapalotl [options] -- [palworld server command]")
+		fs.PrintDefaults()
 	}
-
-	palWorldCommandPath := os.Getenv("ITZPAPALOTL_PALWORLD_SERVER_PATH")
-	if palWorldCommandPath == "" {
-		return nil, errors.New("ITZPAPALOTL_PALWORLD_SERVER_PATH is not set")
-	}
-
-	palWorldCommandArgs := strings.Split(os.Getenv("ITZPAPALOTL_PALWORLD_SERVER_ARGS"), " ")
-
-	rconPort, err := strconv.Atoi(os.Getenv("ITZPAPALOTL_RCON_PORT"))
+	serverPort := fs.Int("server-port", 8211, "PalWorld server port")
+	rocnPort := fs.Int("rcon-port", 25575, "RCON port")
+	adminPassword := fs.String("admin-password", "", "Admin password")
+	err := fs.Parse(args)
 	if err != nil {
-		rconPort = 25575
+		return nil, err
 	}
 
 	return &Configuration{
-		PalWorldServerPort:  palWorldServerPort,
-		PalWorldCommandPath: palWorldCommandPath,
-		PalWorldCommandArgs: palWorldCommandArgs,
-		RconPort:            rconPort,
+		PalWorldServerPort: *serverPort,
+		PalServerCommand:   fs.Args(),
+		RconPort:           *rocnPort,
+		AdminPassword:      *adminPassword,
 	}, nil
+
 }

@@ -38,7 +38,7 @@ func Main() error {
 		}
 
 		logger.Println("Launching PalWorld server")
-		err = LaunchPalWorldServer(cancel, config, logger)
+		pid, err := LaunchPalWorldServer(cancel, config, logger)
 		if err != nil {
 			return err
 		}
@@ -47,13 +47,14 @@ func Main() error {
 
 		logger.Println("Waiting for user existence check")
 		UserExistenceCheck(ctx, config, logger)
+		MemoryUsageCheck(ctx, cancel, config, logger, pid)
 
 		<-ctx.Done()
 		logger.Println("PalWorld server is shutted down by some reason. Restarting...")
 	}
 }
 
-func LaunchPalWorldServer(cancel context.CancelFunc, config *Configuration, logger *log.Logger) error {
+func LaunchPalWorldServer(cancel context.CancelFunc, config *Configuration, logger *log.Logger) (int, error) {
 	cmd := exec.Command(config.PalServerCommand[0], config.PalServerCommand[1:]...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -61,7 +62,7 @@ func LaunchPalWorldServer(cancel context.CancelFunc, config *Configuration, logg
 	logger.Printf("Executing %s", strings.Join(config.PalServerCommand, " "))
 	err := cmd.Start()
 	if err != nil {
-		return err
+		return -1, err
 	}
 
 	go func() {
@@ -72,7 +73,7 @@ func LaunchPalWorldServer(cancel context.CancelFunc, config *Configuration, logg
 		cancel()
 	}()
 
-	return nil
+	return cmd.Process.Pid, nil
 }
 
 var userExistsRe = regexp.MustCompile(`\d+,\d+`)
@@ -116,6 +117,26 @@ func UserExistenceCheck(ctx context.Context, config *Configuration, logger *log.
 					break
 				}
 			}
+		}
+	}()
+}
+
+func MemoryUsageCheck(ctx context.Context, cancel context.CancelFunc, config *Configuration, logger *log.Logger, pid int) {
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				logger.Println("MemoryUsageCheck is shutting down")
+				return
+			default:
+				// do nothing
+			}
+
+			time.Sleep(1 * time.Minute)
+
+			// Check memory usage
+
+			// If memory usage is over the threshold, shut down the PalWorld server
 		}
 	}()
 }

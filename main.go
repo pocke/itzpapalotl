@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/exec"
@@ -20,6 +21,8 @@ func main() {
 
 func Main() error {
 	logger := log.Default()
+	// This ctx will be done when the PalServer is shutted down
+	ctx, cancel := context.WithCancel(context.Background())
 
 	logger.Println("Starting Itzpapalotl")
 	logger.Println("Loading configuration")
@@ -36,7 +39,7 @@ func Main() error {
 		}
 
 		logger.Println("Launching PalWorld server")
-		serverStatusCh, err := LaunchPalWorldServer(config, logger)
+		err = LaunchPalWorldServer(cancel, config, logger)
 		if err != nil {
 			return err
 		}
@@ -44,18 +47,17 @@ func Main() error {
 		time.Sleep(10 * time.Second)
 
 		logger.Println("Waiting for user existence check")
-		shutdownUserCheckerCh, err := UserExistenceCheck(config, logger)
+		UserExistenceCheck(ctx, config, logger)
 		if err != nil {
 			return err
 		}
 
-		<-serverStatusCh
+		<-ctx.Done()
 		logger.Println("PalWorld server is shutted down by some reason. Restarting...")
-		shutdownUserCheckerCh <- void
 	}
 }
 
-func LaunchPalWorldServer(config *Configuration, logger *log.Logger) (<-chan struct{}, error) {
+func LaunchPalWorldServer(cancel context.CancelFunc, config *Configuration, logger *log.Logger) error {
 	cmd := exec.Command(config.PalServerCommand[0], config.PalServerCommand[1:]...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -63,34 +65,30 @@ func LaunchPalWorldServer(config *Configuration, logger *log.Logger) (<-chan str
 	logger.Printf("Executing %s", strings.Join(config.PalServerCommand, " "))
 	err := cmd.Start()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	ch := make(chan struct{})
 	go func() {
 		err := cmd.Wait()
 		if err != nil {
 			logger.Printf("An error occurred from the PalServer command: %s\n", err)
 		}
-		ch <- void
+		cancel()
 	}()
 
-	return ch, nil
+	return nil
 }
 
 var userExistsRe = regexp.MustCompile(`\d+,\d+`)
 
-func UserExistenceCheck(config *Configuration, logger *log.Logger) (chan<- struct{}, error) {
-	shutdownCh := make(chan struct{})
-
+func UserExistenceCheck(ctx context.Context, config *Configuration, logger *log.Logger) {
 	go func() {
-
 		threshold := 30
 		userEmptyCount := 0
 
 		for {
 			select {
-			case <-shutdownCh:
+			case <-ctx.Done():
 				logger.Println("UserExistenceCheck is shutting down")
 				return
 			default:
@@ -124,8 +122,6 @@ func UserExistenceCheck(config *Configuration, logger *log.Logger) (chan<- struc
 			}
 		}
 	}()
-
-	return shutdownCh, nil
 }
 
 func ShutdownPalWorldServer(config *Configuration, logger *log.Logger) error {

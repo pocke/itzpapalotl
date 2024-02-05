@@ -10,8 +10,6 @@ import (
 	"time"
 )
 
-var void struct{} = struct{}{}
-
 func main() {
 	err := Main()
 	if err != nil {

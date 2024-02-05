@@ -21,6 +21,7 @@ func Main() error {
 	logger := log.Default()
 	// This ctx will be done when the PalServer is shutted down
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	logger.Println("Starting Itzpapalotl")
 	logger.Println("Loading configuration")
@@ -46,9 +47,6 @@ func Main() error {
 
 		logger.Println("Waiting for user existence check")
 		UserExistenceCheck(ctx, config, logger)
-		if err != nil {
-			return err
-		}
 
 		<-ctx.Done()
 		logger.Println("PalWorld server is shutted down by some reason. Restarting...")

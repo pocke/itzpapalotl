@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -38,7 +39,7 @@ func Main() error {
 		}
 
 		logger.Println("Launching PalWorld server")
-		pid, err := LaunchPalWorldServer(cancel, config, logger)
+		err = LaunchPalWorldServer(cancel, config, logger)
 		if err != nil {
 			return err
 		}
@@ -47,14 +48,14 @@ func Main() error {
 
 		logger.Println("Waiting for user existence check")
 		UserExistenceCheck(ctx, config, logger)
-		MemoryUsageCheck(ctx, cancel, config, logger, pid)
+		MemoryUsageCheck(ctx, cancel, config, logger)
 
 		<-ctx.Done()
 		logger.Println("PalWorld server is shutted down by some reason. Restarting...")
 	}
 }
 
-func LaunchPalWorldServer(cancel context.CancelFunc, config *Configuration, logger *log.Logger) (int, error) {
+func LaunchPalWorldServer(cancel context.CancelFunc, config *Configuration, logger *log.Logger) error {
 	cmd := exec.Command(config.PalServerCommand[0], config.PalServerCommand[1:]...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -62,7 +63,7 @@ func LaunchPalWorldServer(cancel context.CancelFunc, config *Configuration, logg
 	logger.Printf("Executing %s", strings.Join(config.PalServerCommand, " "))
 	err := cmd.Start()
 	if err != nil {
-		return -1, err
+		return err
 	}
 
 	go func() {
@@ -73,7 +74,7 @@ func LaunchPalWorldServer(cancel context.CancelFunc, config *Configuration, logg
 		cancel()
 	}()
 
-	return cmd.Process.Pid, nil
+	return nil
 }
 
 var userExistsRe = regexp.MustCompile(`\d+,\d+`)
@@ -111,7 +112,7 @@ func UserExistenceCheck(ctx context.Context, config *Configuration, logger *log.
 
 				if userEmptyCount >= threshold {
 					logger.Println("User does not exist for a while, shutting down PalWorld server")
-					if err := ShutdownPalWorldServer(config, logger); err != nil {
+					if err := ShutdownPalWorldServer(config, logger, 1*time.Second, ""); err != nil {
 						logger.Printf("An error occurred while shutting down PalWorld server: %s\n", err)
 					}
 					break
@@ -121,9 +122,11 @@ func UserExistenceCheck(ctx context.Context, config *Configuration, logger *log.
 	}()
 }
 
-func MemoryUsageCheck(ctx context.Context, cancel context.CancelFunc, config *Configuration, logger *log.Logger, pid int) {
+func MemoryUsageCheck(ctx context.Context, cancel context.CancelFunc, config *Configuration, logger *log.Logger) {
 	go func() {
 		for {
+			time.Sleep(1 * time.Minute)
+
 			select {
 			case <-ctx.Done():
 				logger.Println("MemoryUsageCheck is shutting down")
@@ -132,17 +135,41 @@ func MemoryUsageCheck(ctx context.Context, cancel context.CancelFunc, config *Co
 				// do nothing
 			}
 
-			time.Sleep(1 * time.Minute)
+			out, err := exec.Command("ps", "-s", strconv.Itoa(os.Getpid()), "-o", "rss").Output()
+			if err != nil {
+				logger.Printf("An error occurred while executing ps: %s\n", err)
+				continue
+			}
 
-			// Check memory usage
+			mem := 0
+			for _, b := range regexp.MustCompile(`\d+`).FindAll(out, -1) {
+				i, err := strconv.Atoi(string(b))
+				if err != nil {
+					logger.Printf("An error occurred while parsing memory usage: %s\n", err)
+					continue
+				}
+				mem += i
+			}
 
-			// If memory usage is over the threshold, shut down the PalWorld server
+			if mem > config.MemoryThreshold {
+				err := ShutdownPalWorldServer(config, logger, 5*time.Minute, "This server will reboot in 10 minutes due to high memory usage. Please save your work.")
+				if err != nil {
+					logger.Printf("An error occurred while shutting down PalWorld server: %s\n", err)
+				}
+				break
+			}
+		}
+
+		time.Sleep(4 * time.Minute)
+		err := RconBroadcast(config, "Re-announcement. This server will reboot in 1 minute due to high memory usage. Please save your work.")
+		if err != nil {
+			logger.Printf("An error occurred while broadcasting: %s\n", err)
 		}
 	}()
 }
 
-func ShutdownPalWorldServer(config *Configuration, logger *log.Logger) error {
-	err := RconShutdown(config)
+func ShutdownPalWorldServer(config *Configuration, logger *log.Logger, wait time.Duration, msg string) error {
+	err := RconShutdown(config, wait, msg)
 	if err != nil {
 		return err
 	}

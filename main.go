@@ -44,22 +44,14 @@ func Main() error {
 		time.Sleep(10 * time.Second)
 
 		logger.Println("Waiting for user existence check")
-		userExistenceCh, shutdownUserCheckerCh, err := UserExistenceCheck(config, logger)
+		shutdownUserCheckerCh, err := UserExistenceCheck(config, logger)
 		if err != nil {
 			return err
 		}
 
-		select {
-		case <-serverStatusCh:
-			logger.Println("PalWorld server is shutted down by some reason. Restarting...")
-			shutdownUserCheckerCh <- void
-		case <-userExistenceCh:
-			logger.Println("User does not exist for a while, shutting down PalWorld server")
-			err := ShutdownPalWorldServer(config, logger)
-			if err != nil {
-				return err
-			}
-		}
+		<-serverStatusCh
+		logger.Println("PalWorld server is shutted down by some reason. Restarting...")
+		shutdownUserCheckerCh <- void
 	}
 }
 
@@ -88,8 +80,7 @@ func LaunchPalWorldServer(config *Configuration, logger *log.Logger) (<-chan str
 
 var userExistsRe = regexp.MustCompile(`\d+,\d+`)
 
-func UserExistenceCheck(config *Configuration, logger *log.Logger) (<-chan struct{}, chan<- struct{}, error) {
-	ch := make(chan struct{})
+func UserExistenceCheck(config *Configuration, logger *log.Logger) (chan<- struct{}, error) {
 	shutdownCh := make(chan struct{})
 
 	go func() {
@@ -125,14 +116,16 @@ func UserExistenceCheck(config *Configuration, logger *log.Logger) (<-chan struc
 
 				if userEmptyCount >= threshold {
 					logger.Println("User does not exist for a while, shutting down PalWorld server")
-					ch <- void
+					if err := ShutdownPalWorldServer(config, logger); err != nil {
+						logger.Printf("An error occurred while shutting down PalWorld server: %s\n", err)
+					}
 					break
 				}
 			}
 		}
 	}()
 
-	return ch, shutdownCh, nil
+	return shutdownCh, nil
 }
 
 func ShutdownPalWorldServer(config *Configuration, logger *log.Logger) error {

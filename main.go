@@ -85,6 +85,8 @@ func UserExistenceCheck(ctx context.Context, config *Configuration, logger *log.
 		userEmptyCount := 0
 
 		for {
+			time.Sleep(1 * time.Minute)
+
 			select {
 			case <-ctx.Done():
 				logger.Println("UserExistenceCheck is shutting down")
@@ -92,8 +94,6 @@ func UserExistenceCheck(ctx context.Context, config *Configuration, logger *log.
 			default:
 				// do nothing
 			}
-
-			time.Sleep(1 * time.Minute)
 
 			resp, err := RconShowPlayers(config)
 			if err != nil {

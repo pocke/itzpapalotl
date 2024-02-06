@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -47,6 +48,7 @@ func Main() error {
 
 		logger.Println("Waiting for user existence check")
 		UserExistenceCheck(ctx, config, logger)
+		MemoryUsageCheck(ctx, cancel, config, logger)
 
 		<-ctx.Done()
 		logger.Println("PalWorld server is shutted down by some reason. Restarting...")
@@ -110,7 +112,7 @@ func UserExistenceCheck(ctx context.Context, config *Configuration, logger *log.
 
 				if userEmptyCount >= threshold {
 					logger.Println("User does not exist for a while, shutting down PalWorld server")
-					if err := ShutdownPalWorldServer(config, logger); err != nil {
+					if err := ShutdownPalWorldServer(config, logger, 1*time.Second, ""); err != nil {
 						logger.Printf("An error occurred while shutting down PalWorld server: %s\n", err)
 					}
 					break
@@ -120,8 +122,56 @@ func UserExistenceCheck(ctx context.Context, config *Configuration, logger *log.
 	}()
 }
 
-func ShutdownPalWorldServer(config *Configuration, logger *log.Logger) error {
-	err := RconShutdown(config)
+func MemoryUsageCheck(ctx context.Context, cancel context.CancelFunc, config *Configuration, logger *log.Logger) {
+	go func() {
+		for {
+			time.Sleep(1 * time.Minute)
+
+			select {
+			case <-ctx.Done():
+				logger.Println("MemoryUsageCheck is shutting down")
+				return
+			default:
+				// do nothing
+			}
+
+			out, err := exec.Command("ps", "-s", strconv.Itoa(os.Getpid()), "-o", "rss").Output()
+			if err != nil {
+				logger.Printf("An error occurred while executing ps: %s\n", err)
+				continue
+			}
+
+			mem := 0
+			for _, b := range regexp.MustCompile(`\d+`).FindAll(out, -1) {
+				i, err := strconv.Atoi(string(b))
+				if err != nil {
+					logger.Printf("An error occurred while parsing memory usage: %s\n", err)
+					continue
+				}
+				mem += i
+			}
+
+			if mem > config.MemoryThreshold {
+				logger.Printf("Memory usage exceeds the threshold: %d > %d. Restarting the PalServer in 5 minutes\n", mem, config.MemoryThreshold)
+				err := ShutdownPalWorldServer(config, logger, 5*time.Minute, "This server will reboot in 5 minutes due to high memory usage. Please save your work.")
+				if err != nil {
+					logger.Printf("An error occurred while shutting down PalWorld server: %s\n", err)
+				}
+				break
+			}
+		}
+
+		time.Sleep(4 * time.Minute)
+		logger.Println("PalServer will be restarted in 1 minute due to high memory usage")
+		err := RconBroadcast(config, "Re-announcement. This server will reboot in 1 minute due to high memory usage. Please save your work.")
+		if err != nil {
+			logger.Printf("An error occurred while broadcasting: %s\n", err)
+		}
+	}()
+}
+
+func ShutdownPalWorldServer(config *Configuration, logger *log.Logger, wait time.Duration, msg string) error {
+	err := RconShutdown(config, wait, msg)
 	if err != nil {
 		return err
 	}

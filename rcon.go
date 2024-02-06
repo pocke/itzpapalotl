@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"regexp"
+	"time"
 
 	"github.com/gorcon/rcon"
 )
@@ -20,13 +22,30 @@ func RconShowPlayers(config *Configuration) (string, error) {
 	return conn.Execute("ShowPlayers")
 }
 
-func RconShutdown(config *Configuration) error {
+func RconShutdown(config *Configuration, wait time.Duration, msg string) error {
 	conn, err := NewRconClient(config)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 
-	_, err = conn.Execute("Shutdown 1")
+	msg = escapeMessage(msg)
+	_, err = conn.Execute(fmt.Sprintf("Shutdown %d %s", int(wait.Seconds()), msg))
 	return err
+}
+
+func RconBroadcast(config *Configuration, msg string) error {
+	conn, err := NewRconClient(config)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	msg = escapeMessage(msg)
+	_, err = conn.Execute(fmt.Sprintf("Broadcast %s", msg))
+	return err
+}
+
+func escapeMessage(msg string) string {
+	return regexp.MustCompile(`\s`).ReplaceAllString(msg, "_")
 }

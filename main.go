@@ -152,7 +152,8 @@ func MemoryUsageCheck(ctx context.Context, cancel context.CancelFunc, config *Co
 			}
 
 			if mem > config.MemoryThreshold {
-				err := ShutdownPalWorldServer(config, logger, 5*time.Minute, "This server will reboot in 10 minutes due to high memory usage. Please save your work.")
+				logger.Printf("Memory usage exceeds the threshold: %d > %d. Restarting the PalServer in 5 minutes\n", mem, config.MemoryThreshold)
+				err := ShutdownPalWorldServer(config, logger, 5*time.Minute, "This server will reboot in 5 minutes due to high memory usage. Please save your work.")
 				if err != nil {
 					logger.Printf("An error occurred while shutting down PalWorld server: %s\n", err)
 				}
@@ -161,6 +162,7 @@ func MemoryUsageCheck(ctx context.Context, cancel context.CancelFunc, config *Co
 		}
 
 		time.Sleep(4 * time.Minute)
+		logger.Println("PalServer will be restarted in 1 minute due to high memory usage")
 		err := RconBroadcast(config, "Re-announcement. This server will reboot in 1 minute due to high memory usage. Please save your work.")
 		if err != nil {
 			logger.Printf("An error occurred while broadcasting: %s\n", err)

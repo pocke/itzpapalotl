@@ -36,6 +36,12 @@ func NewApp(args []string) (*App, error) {
 // Wait for a UDP request on the PalWorld server port.
 // If a request is received, it returns.
 func (app *App) WaitUdpRequest() error {
+	if app.startServerImmediately {
+		app.logger.Println("Starting PalServer immediately without waiting for an UDP request")
+		app.startServerImmediately = false
+		return nil
+	}
+
 	udpAddr, err := net.ResolveUDPAddr("udp", ":"+strconv.Itoa(app.config.PalWorldServerPort))
 	if err != nil {
 		return err
@@ -58,12 +64,6 @@ func (app *App) WaitUdpRequest() error {
 }
 
 func (app *App) LaunchPalWorldServer(cancel context.CancelFunc) error {
-	if app.startServerImmediately {
-		app.logger.Println("Starting PalServer immediately without waiting for an UDP request")
-		app.startServerImmediately = false
-		return nil
-	}
-
 	cmd := exec.Command(app.config.PalServerCommand[0], app.config.PalServerCommand[1:]...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

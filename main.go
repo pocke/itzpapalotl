@@ -24,12 +24,13 @@ func Main() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	logger.Println("Starting Itzpapalotl")
-	logger.Println("Loading configuration")
 	config, err := NewConfiguration(os.Args[1:])
 	if err != nil {
 		return err
 	}
+
+	logger.Println("Starting Itzpapalotl")
+	logger.Println("Loading configuration")
 
 	for {
 		logger.Println("Waiting for UDP request")

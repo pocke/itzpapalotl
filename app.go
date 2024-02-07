@@ -13,8 +13,9 @@ import (
 )
 
 type App struct {
-	config *Configuration
-	logger *log.Logger
+	config                 *Configuration
+	logger                 *log.Logger
+	startServerImmediately bool
 }
 
 func NewApp(args []string) (*App, error) {
@@ -26,8 +27,9 @@ func NewApp(args []string) (*App, error) {
 	logger := log.Default()
 
 	return &App{
-		config: config,
-		logger: logger,
+		config:                 config,
+		logger:                 logger,
+		startServerImmediately: false,
 	}, nil
 }
 
@@ -56,6 +58,12 @@ func (app *App) WaitUdpRequest() error {
 }
 
 func (app *App) LaunchPalWorldServer(cancel context.CancelFunc) error {
+	if app.startServerImmediately {
+		app.logger.Println("Starting PalServer immediately without waiting for an UDP request")
+		app.startServerImmediately = false
+		return nil
+	}
+
 	cmd := exec.Command(app.config.PalServerCommand[0], app.config.PalServerCommand[1:]...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -167,6 +175,8 @@ func (app *App) MemoryUsageCheck(ctx context.Context, cancel context.CancelFunc)
 		if err != nil {
 			app.logger.Printf("An error occurred while broadcasting: %s\n", err)
 		}
+
+		app.startServerImmediately = true
 	}()
 }
 
